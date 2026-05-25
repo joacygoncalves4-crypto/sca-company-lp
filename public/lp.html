@@ -2179,17 +2179,17 @@
     btn.disabled = true;
 
     try {
-      await fetch(SCRIPT_URL, {
+      const res = await fetch(SCRIPT_URL, {
         method: 'POST',
-        
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      if (!res.ok) throw new Error('Erro ' + res.status);
       window.location.href = '/obrigado.html';
     } catch (err) {
       btn.textContent = 'QUERO MAIS INFORMAÇÕES →';
       btn.disabled = false;
-      alert('Ocorreu um erro. Tente novamente.');
+      alert('Ocorreu um erro ao enviar. Tente novamente.');
     }
   }
 
