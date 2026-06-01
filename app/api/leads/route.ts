@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+const VEX_WEBHOOK_URL =
+  "https://api.crmvex.com.br/webhook/leads/661bb0f9-9965-4832-a0f5-afb06453b798";
+
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.startsWith("55") && digits.length >= 12) return digits;
@@ -19,8 +22,7 @@ async function sendToVex(lead: {
   cnpj: string | null;
   investimento: string | null;
 }) {
-  const apiKey = process.env.VEX_API_KEY;
-  if (!apiKey) return;
+  const phone = formatPhone(lead.telefone);
 
   const customFields: Record<string, string> = {
     email: lead.email,
@@ -29,31 +31,54 @@ async function sendToVex(lead: {
   };
   if (lead.instagram) customFields.instagram = lead.instagram;
   if (lead.cnpj) customFields.cnpj = lead.cnpj;
-  if (lead.investimento) customFields.investimento = lead.investimento;
+  if (lead.investimento) customFields.investimento_4k = lead.investimento;
 
+  const payload = {
+    number: phone,
+    name: lead.nome,
+    email: lead.email,
+    tags: ["LP SCA Company", lead.segmento, lead.faturamento],
+    customFields,
+  };
+
+  // 1. Envia para o Webhook de Entrada do VEX (cria na coluna "Leads da LP")
   try {
-    const res = await fetch("https://api.crmvex.com.br/api/contact", {
+    const res = await fetch(VEX_WEBHOOK_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": apiKey,
-      },
-      body: JSON.stringify({
-        number: formatPhone(lead.telefone),
-        name: lead.nome,
-        tags: ["LP SCA Company", lead.segmento, lead.faturamento],
-        customFields,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
-
     if (!res.ok) {
       const err = await res.text();
-      console.error("Erro ao enviar para VEX:", res.status, err);
+      console.error("Erro no webhook VEX:", res.status, err);
     } else {
-      console.log("Lead enviado ao VEX com sucesso.");
+      console.log("✅ Lead enviado ao webhook VEX (pipeline).");
     }
   } catch (err) {
-    console.error("Falha na chamada VEX:", err);
+    console.error("Falha no webhook VEX:", err);
+  }
+
+  // 2. Também cria o contato via API REST do VEX (garante que fica nos Contatos)
+  const apiKey = process.env.VEX_API_KEY;
+  if (apiKey) {
+    try {
+      const res = await fetch("https://api.crmvex.com.br/api/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": apiKey,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("Erro ao criar contato VEX:", res.status, err);
+      } else {
+        console.log("✅ Contato criado no VEX.");
+      }
+    } catch (err) {
+      console.error("Falha ao criar contato VEX:", err);
+    }
   }
 }
 
@@ -75,7 +100,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Envia para o VEX em paralelo, sem bloquear a resposta
+    // Envia para o VEX em paralelo, sem bloquear a resposta ao usuário
     sendToVex(lead).catch(console.error);
 
     return NextResponse.json({ success: true, id: lead.id }, { status: 201 });
