@@ -33,13 +33,17 @@ async function sendToVex(lead: {
   if (lead.cnpj) customFields.cnpj = lead.cnpj;
   if (lead.investimento) customFields.investimento_4k = lead.investimento;
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     number: phone,
     name: lead.nome,
     email: lead.email,
+    segmento: lead.segmento,
+    faturamento: lead.faturamento,
     tags: ["LP SCA Company", lead.segmento, lead.faturamento],
-    customFields,
   };
+  if (lead.instagram) payload.instagram = lead.instagram;
+  if (lead.cnpj) payload.cnpj = lead.cnpj;
+  if (lead.investimento) payload.investimento_4k = lead.investimento;
 
   // 1. Envia para o Webhook de Entrada do VEX (cria na coluna "Leads da LP")
   try {
