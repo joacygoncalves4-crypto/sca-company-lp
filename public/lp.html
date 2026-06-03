@@ -2169,11 +2169,58 @@
   // ⚙️ COLE AQUI A URL DO SEU GOOGLE APPS SCRIPT (ver instruções abaixo)
   const SCRIPT_URL = '/api/leads';
 
+  function showFieldError(form, name, msg) {
+    const input = form.querySelector('[name="' + name + '"]');
+    if (!input) return;
+    let err = input.parentElement.querySelector('.field-error');
+    if (!err) {
+      err = document.createElement('p');
+      err.className = 'field-error';
+      err.style.cssText = 'color:#ff4d4d;font-size:0.78rem;margin-top:4px;';
+      input.parentElement.appendChild(err);
+    }
+    err.textContent = msg;
+    input.style.borderColor = '#ff4d4d';
+  }
+
+  function clearFieldErrors(form) {
+    form.querySelectorAll('.field-error').forEach(el => el.remove());
+    form.querySelectorAll('input, select').forEach(el => el.style.borderColor = '');
+  }
+
   async function submitForm(form, btn) {
+    clearFieldErrors(form);
     const data = {};
     new FormData(form).forEach((v, k) => data[k] = v);
     data.origem = 'LP SCA Company';
     data.timestamp = new Date().toLocaleString('pt-BR');
+
+    // Client-side validation
+    let valid = true;
+    if (!data.nome || !String(data.nome).trim()) {
+      showFieldError(form, 'nome', 'Por favor, informe seu nome completo.');
+      valid = false;
+    }
+    if (!data.telefone || String(data.telefone).replace(/\D/g,'').length < 10) {
+      showFieldError(form, 'telefone', 'Por favor, informe um telefone válido com DDD.');
+      valid = false;
+    }
+    if (!data.email || !String(data.email).includes('@')) {
+      showFieldError(form, 'email', 'Por favor, informe um e-mail válido.');
+      valid = false;
+    }
+    if (!data.segmento) {
+      showFieldError(form, 'segmento', 'Por favor, selecione o segmento.');
+      valid = false;
+    }
+    if (!data.faturamento) {
+      showFieldError(form, 'faturamento', 'Por favor, selecione o faturamento.');
+      valid = false;
+    }
+    if (!valid) return;
+
+    // Strip phone mask before sending — only digits
+    data.telefone = String(data.telefone).replace(/\D/g, '');
 
     btn.textContent = 'ENVIANDO...';
     btn.disabled = true;
