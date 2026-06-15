@@ -2234,6 +2234,13 @@
     // Strip phone mask before sending — only digits
     data.telefone = String(data.telefone).replace(/\D/g, '');
 
+    // Meta event deduplication: gera event_id único e captura cookies do Pixel
+    const eventId = 'lead_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    const getCookie = (n) => { const m = document.cookie.match('(^|;)\\s*' + n + '\\s*=\\s*([^;]+)'); return m ? m[2] : ''; };
+    data.meta_event_id = eventId;
+    data.meta_fbc = getCookie('_fbc');
+    data.meta_fbp = getCookie('_fbp');
+
     btn.textContent = 'ENVIANDO...';
     btn.disabled = true;
 
@@ -2244,7 +2251,12 @@
         body: JSON.stringify(data)
       });
       if (!res.ok) throw new Error('Erro ' + res.status);
-      if (typeof fbq !== 'undefined') fbq('track', 'Lead');
+      // Dispara evento Lead com event_id para deduplicação com CAPI
+      if (typeof fbq !== 'undefined') {
+        fbq('track', 'Lead', { content_name: 'LP SCA Company', content_category: data.segmento }, { eventID: eventId });
+      }
+      // Salva event_id para a página de obrigado usar o mesmo ID (deduplicação)
+      try { sessionStorage.setItem('meta_lead_event_id', eventId); } catch(e) {}
       window.location.href = '/obrigado.html';
     } catch (err) {
       btn.textContent = 'QUERO MAIS INFORMAÇÕES →';

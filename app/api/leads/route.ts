@@ -1,7 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { prisma } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+
+const META_PIXEL_ID = "966812949173995";
+const META_CAPI_URL = `https://graph.facebook.com/v19.0/${META_PIXEL_ID}/events`;
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
+
+async function sendToMetaCAPI(
+  lead: { nome: string; telefone: string; email: string; segmento: string },
+  req: NextRequest,
+  eventId: string,
+  fbc: string,
+  fbp: string
+) {
+  const token = process.env.META_ACCESS_TOKEN;
+  if (!token) return;
+
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    req.headers.get("x-real-ip") ||
+    "";
+  const userAgent = req.headers.get("user-agent") || "";
+
+  const nameParts = lead.nome.trim().toLowerCase().split(" ");
+  const userData: Record<string, unknown> = {
+    em: [sha256(lead.email)],
+    ph: [sha256("55" + lead.telefone.replace(/\D/g, "").replace(/^55/, ""))],
+    fn: [sha256(nameParts[0] || "")],
+    ...(nameParts.length > 1 && { ln: [sha256(nameParts[nameParts.length - 1])] }),
+    client_ip_address: ip,
+    client_user_agent: userAgent,
+  };
+  if (fbc) userData.fbc = fbc;
+  if (fbp) userData.fbp = fbp;
+
+  const payload = {
+    data: [
+      {
+        event_name: "Lead",
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: eventId,
+        action_source: "website",
+        event_source_url: "https://www.assessoriavex.com.br/lp.html",
+        user_data: userData,
+        custom_data: {
+          content_name: "LP SCA Company",
+          content_category: lead.segmento,
+        },
+      },
+    ],
+    access_token: token,
+  };
+
+  try {
+    const res = await fetch(META_CAPI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      console.error("Erro Meta CAPI:", json);
+    } else {
+      console.log("✅ Lead enviado à Meta CAPI. events_received:", json.events_received);
+    }
+  } catch (err) {
+    console.error("Falha Meta CAPI:", err);
+  }
+}
 
 const VEX_WEBHOOK_URL =
   "https://api.crmvex.com.br/webhook/leads/661bb0f9-9965-4832-a0f5-afb06453b798";
@@ -166,11 +237,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Envia para o VEX e notifica grupo WA em paralelo, sem bloquear a resposta
+    const eventId = body.meta_event_id || `lead_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const fbc = body.meta_fbc || "";
+    const fbp = body.meta_fbp || "";
+
+    // Envia para VEX, WA e Meta CAPI em paralelo, sem bloquear a resposta
     sendToVex(lead).catch(console.error);
     notifyWhatsAppGroup(lead).catch(console.error);
+    sendToMetaCAPI(lead, req, eventId, fbc, fbp).catch(console.error);
 
-    return NextResponse.json({ success: true, id: lead.id }, { status: 201 });
+    return NextResponse.json({ success: true, id: lead.id, event_id: eventId }, { status: 201 });
   } catch (error) {
     console.error("Erro ao salvar lead:", error);
     return NextResponse.json({ success: false }, { status: 500 });
