@@ -101,7 +101,7 @@
       display: inline-flex;
       align-items: center;
     }
-    .logo img { height: 60px; width: auto; display: block; }
+    .logo img { height: 100px; width: auto; display: block; }
     .logo span { color: var(--blue); }
 
     /* ===================== HERO ===================== */
@@ -1375,7 +1375,7 @@
 
       /* Header */
       header { padding: 12px 18px; }
-      .logo img { height: 44px; }
+      .logo img { height: 70px; }
     }
 
     /* iPhone safe area (notch/dynamic island) */
@@ -2257,6 +2257,8 @@
       }
       // Salva event_id para a página de obrigado usar o mesmo ID (deduplicação)
       try { sessionStorage.setItem('meta_lead_event_id', eventId); } catch(e) {}
+      // Aguarda 400ms para o pixel ter tempo de disparar antes do redirect
+      await new Promise(r => setTimeout(r, 400));
       window.location.href = '/obrigado.html';
     } catch (err) {
       btn.textContent = 'QUERO MAIS INFORMAÇÕES →';
