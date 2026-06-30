@@ -14,11 +14,15 @@
   document,'script','https://connect.facebook.net/en_US/fbevents.js');
   fbq('init','966812949173995');
   fbq('track','PageView');
-  // Usa o mesmo event_id da LP para deduplicação (Meta não conta duas vezes)
+  // Só dispara Lead se a pessoa REALMENTE veio de um envio de formulário.
+  // O event_id é gravado pela LP no momento do submit. Sem ele (acesso direto,
+  // refresh, voltar/avançar, crawler do Meta) NÃO dispara — evita leads fantasmas.
   var _eid = '';
   try { _eid = sessionStorage.getItem('meta_lead_event_id') || ''; } catch(e) {}
-  fbq('track','Lead', { content_name: 'LP SCA Company' }, _eid ? { eventID: _eid } : {});
-  try { sessionStorage.removeItem('meta_lead_event_id'); } catch(e) {}
+  if (_eid) {
+    fbq('track','Lead', { content_name: 'LP SCA Company' }, { eventID: _eid });
+    try { sessionStorage.removeItem('meta_lead_event_id'); } catch(e) {}
+  }
   </script>
   <noscript><img height="1" width="1" style="display:none"
   src="https://www.facebook.com/tr?id=966812949173995&ev=PageView&noscript=1"/></noscript>
