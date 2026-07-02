@@ -145,6 +145,45 @@ function formatPhone(raw: string): string {
   return "55" + digits;
 }
 
+// POST com retry (backoff) e timeout. Tenta até `attempts` vezes antes de desistir.
+async function postJsonWithRetry(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  label: string,
+  attempts = 3
+): Promise<boolean> {
+  const payloadStr = JSON.stringify(body);
+  for (let i = 1; i <= attempts; i++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: payloadStr,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const respText = await res.text();
+      if (res.ok) {
+        console.log(`✅ ${label} OK (tentativa ${i}/${attempts}). Resposta:`, respText.slice(0, 300));
+        return true;
+      }
+      console.error(`❌ ${label} falhou (tentativa ${i}/${attempts}) — status ${res.status}. Resposta:`, respText.slice(0, 500));
+      console.error(`   Payload enviado:`, payloadStr.slice(0, 500));
+      // 4xx (exceto 429) = erro de dados, não adianta repetir
+      if (res.status >= 400 && res.status < 500 && res.status !== 429) return false;
+    } catch (err) {
+      clearTimeout(timeout);
+      console.error(`❌ ${label} erro de rede/timeout (tentativa ${i}/${attempts}):`, err);
+    }
+    if (i < attempts) await new Promise((r) => setTimeout(r, i * 1500)); // 1.5s, 3s...
+  }
+  console.error(`🔴 ${label} DESISTIU após ${attempts} tentativas.`);
+  return false;
+}
+
 async function sendToVex(lead: {
   nome: string;
   telefone: string;
@@ -178,44 +217,26 @@ async function sendToVex(lead: {
   if (lead.cnpj) payload.cnpj = lead.cnpj;
   if (lead.investimento) payload.investimento_4k = lead.investimento;
 
+  console.log("➡️  Enviando lead ao VEX. Payload:", JSON.stringify(payload));
+
   // 1. Envia para o Webhook de Entrada do VEX (cria na coluna "Leads da LP")
-  try {
-    const res = await fetch(VEX_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Erro no webhook VEX:", res.status, err);
-    } else {
-      console.log("✅ Lead enviado ao webhook VEX (pipeline).");
-    }
-  } catch (err) {
-    console.error("Falha no webhook VEX:", err);
-  }
+  const webhookOk = await postJsonWithRetry(VEX_WEBHOOK_URL, {}, payload, "Webhook VEX");
 
   // 2. Também cria o contato via API REST do VEX (garante que fica nos Contatos)
   const apiKey = process.env.VEX_API_KEY;
   if (apiKey) {
-    try {
-      const res = await fetch("https://api.crmvex.com.br/api/contact", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": apiKey,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        console.error("Erro ao criar contato VEX:", res.status, err);
-      } else {
-        console.log("✅ Contato criado no VEX.");
-      }
-    } catch (err) {
-      console.error("Falha ao criar contato VEX:", err);
-    }
+    await postJsonWithRetry(
+      "https://api.crmvex.com.br/api/contact",
+      { "api-key": apiKey },
+      payload,
+      "API Contato VEX"
+    );
+  } else {
+    console.warn("⚠️  VEX_API_KEY não configurada — só o webhook rodou (contato não criado via API).");
+  }
+
+  if (!webhookOk) {
+    console.error("🔴 LEAD NÃO ENTROU NO VEX pelo webhook — verifique os logs acima.");
   }
 }
 
