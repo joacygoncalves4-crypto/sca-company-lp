@@ -118,25 +118,15 @@ async function notifyWhatsAppGroup(lead: {
 
   const text = lines.join("\n");
 
-  try {
-    const instance = encodeURIComponent(EVOLUTION_INSTANCE);
-    const res = await fetch(`${EVOLUTION_URL}/message/sendText/${instance}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: apiKey,
-      },
-      body: JSON.stringify({ number: EVOLUTION_GROUP, text }),
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Erro Evolution API:", res.status, err);
-    } else {
-      console.log("✅ Notificação WhatsApp enviada ao grupo.");
-    }
-  } catch (err) {
-    console.error("Falha Evolution API:", err);
-  }
+  const instance = encodeURIComponent(EVOLUTION_INSTANCE);
+  const url = `${EVOLUTION_URL}/message/sendText/${instance}`;
+  console.log(`➡️  Enviando notificação ao grupo WhatsApp (${EVOLUTION_GROUP}) via instância "${EVOLUTION_INSTANCE}".`);
+  await postJsonWithRetry(
+    url,
+    { apikey: apiKey },
+    { number: EVOLUTION_GROUP, text },
+    "Notificação WhatsApp grupo"
+  );
 }
 
 function formatPhone(raw: string): string {
@@ -205,9 +195,20 @@ async function sendToVex(lead: {
   if (lead.cnpj) customFields.cnpj = lead.cnpj;
   if (lead.investimento) customFields.investimento_4k = lead.investimento;
 
+  // O webhook do VEX rejeitava com "CONTACT_NUMBER_REQUIRED" porque esperava o
+  // telefone em outro campo. Enviamos sob todos os nomes prováveis para garantir
+  // que o VEX encontre (campos extras são ignorados pelo destino).
   const payload: Record<string, unknown> = {
     number: phone,
+    phone: phone,
+    phoneNumber: phone,
+    contactNumber: phone,
+    contact_number: phone,
+    telefone: phone,
+    celular: phone,
+    whatsapp: phone,
     name: lead.nome,
+    contactName: lead.nome,
     email: lead.email,
     segmento: lead.segmento,
     faturamento: lead.faturamento,
