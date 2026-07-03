@@ -72,6 +72,8 @@ export default function KanbanBoard({ initialLeads }: { initialLeads: Lead[] }) 
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [statusFilter, setStatusFilter] = useState("todos");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   function handleStatusChange(id: string, status: string) {
     setLeads((prev) =>
@@ -92,7 +94,15 @@ export default function KanbanBoard({ initialLeads }: { initialLeads: Lead[] }) 
       l.email.toLowerCase().includes(q) ||
       l.telefone.includes(q) ||
       (l.instagram ?? "").toLowerCase().includes(q);
-    return matchStatus && matchSearch;
+
+    let matchDate = true;
+    if (dateFrom || dateTo) {
+      const created = new Date(l.createdAt);
+      if (dateFrom && created < new Date(dateFrom + "T00:00:00")) matchDate = false;
+      if (dateTo && created > new Date(dateTo + "T23:59:59")) matchDate = false;
+    }
+
+    return matchStatus && matchSearch && matchDate;
   });
 
   const totalVisible = filtered.length;
@@ -123,6 +133,37 @@ export default function KanbanBoard({ initialLeads }: { initialLeads: Lead[] }) 
               {opt.label}
             </button>
           ))}
+        </div>
+
+        {/* Filtro por data (quando o lead entrou) */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[#8a9ab0] text-xs">Período:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            aria-label="Data inicial"
+            className="bg-[#111820] border border-[#1e2a38] rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-[#0057ff] [color-scheme:dark]"
+          />
+          <span className="text-[#8a9ab0] text-xs">até</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            aria-label="Data final"
+            className="bg-[#111820] border border-[#1e2a38] rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-[#0057ff] [color-scheme:dark]"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+              }}
+              className="text-xs text-[#8a9ab0] hover:text-white border border-[#1e2a38] hover:border-[#8a9ab0] rounded-lg px-2 py-1.5 transition-colors"
+            >
+              Limpar
+            </button>
+          )}
         </div>
 
         <span className="text-[#8a9ab0] text-xs ml-auto">
