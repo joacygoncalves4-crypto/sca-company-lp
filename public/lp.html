@@ -2297,7 +2297,13 @@
       if (!res.ok) throw new Error('Erro ' + res.status);
       // Dispara evento Lead com event_id para deduplicação com CAPI
       if (typeof fbq !== 'undefined') {
-        fbq('track', 'Lead', { content_name: 'LP SCA Company', content_category: data.segmento }, { eventID: eventId });
+        fbq('track', 'Lead', { content_name: 'LP SCA Company', content_category: data.segmento, faturamento: data.faturamento }, { eventID: eventId });
+        // Lead Qualificado: faturamento a partir de R$50 mil/mês.
+        // Evento espelhado no servidor (CAPI) com o mesmo eventID + '_q' para dedup.
+        var lowTiers = ['Até R$30 mil', 'R$30 mil a R$50 mil'];
+        if (data.faturamento && lowTiers.indexOf(data.faturamento) === -1) {
+          fbq('trackCustom', 'LeadQualificado', { content_name: 'LP SCA Company', content_category: data.segmento, faturamento: data.faturamento }, { eventID: eventId + '_q' });
+        }
       }
       // Salva event_id para a página de obrigado usar o mesmo ID (deduplicação)
       try { sessionStorage.setItem('meta_lead_event_id', eventId); } catch(e) {}

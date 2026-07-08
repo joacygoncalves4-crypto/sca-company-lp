@@ -11,8 +11,19 @@ function sha256(value: string): string {
   return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
 }
 
+// Faturamentos que NÃO contam como lead qualificado (abaixo de R$50 mil/mês).
+// Ajuste aqui se quiser mudar a régua de qualificação.
+const FATURAMENTOS_NAO_QUALIFICADOS = new Set(["Até R$30 mil", "R$30 mil a R$50 mil"]);
+
 async function sendToMetaCAPI(
-  lead: { nome: string; telefone: string; email: string; segmento: string },
+  lead: {
+    nome: string;
+    telefone: string;
+    email: string;
+    segmento: string;
+    faturamento: string;
+    investimento: string | null;
+  },
   req: NextRequest,
   eventId: string,
   fbc: string,
@@ -39,23 +50,43 @@ async function sendToMetaCAPI(
   if (fbc) userData.fbc = fbc;
   if (fbp) userData.fbp = fbp;
 
-  const payload = {
-    data: [
-      {
-        event_name: "Lead",
-        event_time: Math.floor(Date.now() / 1000),
-        event_id: eventId,
-        action_source: "website",
-        event_source_url: "https://www.assessoriavex.com.br/lp.html",
-        user_data: userData,
-        custom_data: {
-          content_name: "LP SCA Company",
-          content_category: lead.segmento,
-        },
-      },
-    ],
-    access_token: token,
+  const eventTime = Math.floor(Date.now() / 1000);
+  const customData = {
+    content_name: "LP SCA Company",
+    content_category: lead.segmento,
+    faturamento: lead.faturamento,
+    ...(lead.investimento && { investimento_4k: lead.investimento }),
   };
+
+  const events: Record<string, unknown>[] = [
+    {
+      event_name: "Lead",
+      event_time: eventTime,
+      event_id: eventId,
+      action_source: "website",
+      event_source_url: "https://www.assessoriavex.com.br/lp.html",
+      user_data: userData,
+      custom_data: customData,
+    },
+  ];
+
+  // Lead Qualificado (faturamento ≥ R$50 mil): sinal extra para a Meta otimizar
+  // por QUALIDADE. Espelha o evento do navegador com o mesmo event_id + "_q".
+  const qualificado =
+    lead.faturamento && !FATURAMENTOS_NAO_QUALIFICADOS.has(lead.faturamento);
+  if (qualificado) {
+    events.push({
+      event_name: "LeadQualificado",
+      event_time: eventTime,
+      event_id: `${eventId}_q`,
+      action_source: "website",
+      event_source_url: "https://www.assessoriavex.com.br/lp.html",
+      user_data: userData,
+      custom_data: customData,
+    });
+  }
+
+  const payload = { data: events, access_token: token };
 
   try {
     const res = await fetch(META_CAPI_URL, {
@@ -67,7 +98,9 @@ async function sendToMetaCAPI(
     if (!res.ok) {
       console.error("Erro Meta CAPI:", json);
     } else {
-      console.log("✅ Lead enviado à Meta CAPI. events_received:", json.events_received);
+      console.log(
+        `✅ Meta CAPI: ${json.events_received} evento(s) recebido(s) (Lead${qualificado ? " + LeadQualificado" : ""}).`
+      );
     }
   } catch (err) {
     console.error("Falha Meta CAPI:", err);
