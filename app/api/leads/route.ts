@@ -78,7 +78,7 @@ const VEX_WEBHOOK_URL =
   "https://api.crmvex.com.br/webhook/leads/661bb0f9-9965-4832-a0f5-afb06453b798";
 
 const EVOLUTION_URL = "https://evolutionapi.linikrodrigues.com.br";
-const EVOLUTION_INSTANCE = "SCA VENDAS";
+const EVOLUTION_INSTANCE = "VEX AVISOS LP";
 const EVOLUTION_GROUP = "120363408419081492@g.us";
 
 async function notifyWhatsAppGroup(lead: {
