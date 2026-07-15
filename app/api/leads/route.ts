@@ -253,21 +253,9 @@ async function sendToVex(lead: {
 
   console.log("➡️  Enviando lead ao VEX. Payload:", JSON.stringify(payload));
 
-  // 1. Envia para o Webhook de Entrada do VEX (cria na coluna "Leads da LP")
+  // Envia para o Webhook de Entrada do VEX (cria o contato na coluna "Leads da LP").
+  // O webhook já cria o contato completo, então não precisamos da API REST redundante.
   const webhookOk = await postJsonWithRetry(VEX_WEBHOOK_URL, {}, payload, "Webhook VEX");
-
-  // 2. Também cria o contato via API REST do VEX (garante que fica nos Contatos)
-  const apiKey = process.env.VEX_API_KEY;
-  if (apiKey) {
-    await postJsonWithRetry(
-      "https://api.crmvex.com.br/api/contact",
-      { "api-key": apiKey },
-      payload,
-      "API Contato VEX"
-    );
-  } else {
-    console.warn("⚠️  VEX_API_KEY não configurada — só o webhook rodou (contato não criado via API).");
-  }
 
   if (!webhookOk) {
     console.error("🔴 LEAD NÃO ENTROU NO VEX pelo webhook — verifique os logs acima.");
