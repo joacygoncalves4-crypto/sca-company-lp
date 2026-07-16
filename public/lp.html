@@ -8,8 +8,11 @@
   <meta name="facebook-domain-verification" content="lqlz6c5y2y3aesrx3bzh5xbc987ei9" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <!-- Fontes carregadas de forma não-bloqueante (não travam a primeira pintura) -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" /></noscript>
+  <!-- Three.js NÃO é carregado aqui — ele bloqueava a renderização (~600KB).
+       Agora é carregado sob demanda, só no desktop e após a página aparecer (ver fim do body). -->
   <!-- Facebook Pixel -->
   <script>
   !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -1976,7 +1979,7 @@
 <!-- ======== SCRIPTS ======== -->
 <script>
   // ---- Dotted Surface (Three.js) ----
-  (function initDottedSurface() {
+  function initDottedSurface() {
     const container = document.getElementById('dotted-surface');
     if (!container || typeof THREE === 'undefined') return;
 
@@ -2077,7 +2080,22 @@
     io.observe(container);
 
     animate();
-  })();
+  }
+
+  // Carrega o Three.js SOB DEMANDA: pula no mobile (economiza ~600KB e acelera muito),
+  // e no desktop carrega de forma assíncrona só DEPOIS que a página já apareceu.
+  function loadDottedSurface() {
+    // Pula em telas pequenas (mobile é a prioridade de velocidade) e no modo economia de dados
+    if (window.matchMedia('(max-width: 900px)').matches) return;
+    if (navigator.connection && navigator.connection.saveData) return;
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/three@0.160.0/build/three.min.js';
+    s.async = true;
+    s.onload = initDottedSurface;
+    document.body.appendChild(s);
+  }
+  if (document.readyState === 'complete') loadDottedSurface();
+  else window.addEventListener('load', loadDottedSurface);
 
   // ---- Testimonial videos (facade → load iframe on click) ----
   document.querySelectorAll('.testimonial-video').forEach(card => {
