@@ -12,7 +12,6 @@ function sha256(value: string): string {
 }
 
 // Faturamentos que NÃO contam como lead qualificado (abaixo de R$50 mil/mês).
-// Ajuste aqui se quiser mudar a régua de qualificação.
 const FATURAMENTOS_NAO_QUALIFICADOS = new Set(["Até R$30 mil", "R$30 mil a R$50 mil"]);
 
 async function sendToMetaCAPI(
@@ -70,8 +69,6 @@ async function sendToMetaCAPI(
     },
   ];
 
-  // Lead Qualificado (faturamento ≥ R$50 mil): sinal extra para a Meta otimizar
-  // por QUALIDADE. Espelha o evento do navegador com o mesmo event_id + "_q".
   const qualificado =
     lead.faturamento && !FATURAMENTOS_NAO_QUALIFICADOS.has(lead.faturamento);
   if (qualificado) {
@@ -110,6 +107,7 @@ async function sendToMetaCAPI(
 const VEX_WEBHOOK_URL =
   "https://api.crmvex.com.br/webhook/leads/661bb0f9-9965-4832-a0f5-afb06453b798";
 
+// Configuração da Evolution API (WhatsApp). Sobrescrevível por variável de ambiente.
 const EVOLUTION_URL = process.env.EVOLUTION_URL || "https://evolution.assessoriavex.com.br";
 const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || "SCA AVISO GRUPO LEADS";
 const EVOLUTION_GROUP = process.env.EVOLUTION_GROUP || "120363408419081492@g.us";
@@ -168,7 +166,7 @@ function formatPhone(raw: string): string {
   return "55" + digits;
 }
 
-// POST com retry (backoff) e timeout. Tenta até `attempts` vezes antes de desistir.
+// POST com retry (backoff) e timeout.
 async function postJsonWithRetry(
   url: string,
   headers: Record<string, string>,
@@ -179,7 +177,7 @@ async function postJsonWithRetry(
   const payloadStr = JSON.stringify(body);
   for (let i = 1; i <= attempts; i++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10s
+    const timeout = setTimeout(() => controller.abort(), 10000);
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -195,13 +193,12 @@ async function postJsonWithRetry(
       }
       console.error(`❌ ${label} falhou (tentativa ${i}/${attempts}) — status ${res.status}. Resposta:`, respText.slice(0, 500));
       console.error(`   Payload enviado:`, payloadStr.slice(0, 500));
-      // 4xx (exceto 429) = erro de dados, não adianta repetir
       if (res.status >= 400 && res.status < 500 && res.status !== 429) return false;
     } catch (err) {
       clearTimeout(timeout);
       console.error(`❌ ${label} erro de rede/timeout (tentativa ${i}/${attempts}):`, err);
     }
-    if (i < attempts) await new Promise((r) => setTimeout(r, i * 1500)); // 1.5s, 3s...
+    if (i < attempts) await new Promise((r) => setTimeout(r, i * 1500));
   }
   console.error(`🔴 ${label} DESISTIU após ${attempts} tentativas.`);
   return false;
@@ -219,18 +216,8 @@ async function sendToVex(lead: {
 }) {
   const phone = formatPhone(lead.telefone);
 
-  const customFields: Record<string, string> = {
-    email: lead.email,
-    segmento: lead.segmento,
-    faturamento: lead.faturamento,
-  };
-  if (lead.instagram) customFields.instagram = lead.instagram;
-  if (lead.cnpj) customFields.cnpj = lead.cnpj;
-  if (lead.investimento) customFields.investimento_4k = lead.investimento;
-
   // O webhook do VEX rejeitava com "CONTACT_NUMBER_REQUIRED" porque esperava o
-  // telefone em outro campo. Enviamos sob todos os nomes prováveis para garantir
-  // que o VEX encontre (campos extras são ignorados pelo destino).
+  // telefone em outro campo. Enviamos sob todos os nomes prováveis.
   const payload: Record<string, unknown> = {
     number: phone,
     phone: phone,
@@ -253,8 +240,6 @@ async function sendToVex(lead: {
 
   console.log("➡️  Enviando lead ao VEX. Payload:", JSON.stringify(payload));
 
-  // Envia para o Webhook de Entrada do VEX (cria o contato na coluna "Leads da LP").
-  // O webhook já cria o contato completo, então não precisamos da API REST redundante.
   const webhookOk = await postJsonWithRetry(VEX_WEBHOOK_URL, {}, payload, "Webhook VEX");
 
   if (!webhookOk) {
@@ -283,6 +268,7 @@ export async function POST(req: NextRequest) {
     const eventId = body.meta_event_id || `lead_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const fbc = body.meta_fbc || "";
     const fbp = body.meta_fbp || "";
+    console.log(`🔎 Atribuição Meta — fbc: "${fbc || "(VAZIO)"}" | fbp: "${fbp || "(VAZIO)"}"`);
 
     // Envia para VEX, WA e Meta CAPI em paralelo, sem bloquear a resposta
     sendToVex(lead).catch(console.error);
